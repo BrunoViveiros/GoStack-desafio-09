@@ -20,13 +20,29 @@ interface IRequest {
 @injectable()
 class CreateOrderService {
   constructor(
+    @inject('OrdersRepository')
     private ordersRepository: IOrdersRepository,
+
+    @inject('ProductsRepository')
     private productsRepository: IProductsRepository,
+
+    @inject('CustomersRepository')
     private customersRepository: ICustomersRepository,
   ) {}
 
   public async execute({ customer_id, products }: IRequest): Promise<Order> {
-    // TODO
+    const order = await this.ordersRepository.create({
+      customer: {
+        id: '123',
+        created_at: new Date(Date.now()),
+        email: '123',
+        name: 'name',
+        updated_at: new Date(Date.now()),
+      },
+      products: [{ price: 123, product_id: '123', quantity: 1 }],
+    });
+
+    return order;
   }
 }
 
