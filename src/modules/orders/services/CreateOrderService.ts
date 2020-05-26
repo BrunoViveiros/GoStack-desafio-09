@@ -4,6 +4,7 @@ import AppError from '@shared/errors/AppError';
 
 import IProductsRepository from '@modules/products/repositories/IProductsRepository';
 import ICustomersRepository from '@modules/customers/repositories/ICustomersRepository';
+import Product from '@modules/products/infra/typeorm/entities/Product';
 import Order from '../infra/typeorm/entities/Order';
 import IOrdersRepository from '../repositories/IOrdersRepository';
 
@@ -31,16 +32,62 @@ class CreateOrderService {
   ) {}
 
   public async execute({ customer_id, products }: IRequest): Promise<Order> {
-    const order = await this.ordersRepository.create({
-      customer: {
-        id: '123',
-        created_at: new Date(Date.now()),
-        email: '123',
-        name: 'name',
-        updated_at: new Date(Date.now()),
-      },
-      products: [{ price: 123, product_id: '123', quantity: 1 }],
+    const customer = await this.customersRepository.findById(customer_id);
+
+    if (!customer) {
+      throw new AppError('Invalid customer id.');
+    }
+
+    const foundProducts = await this.productsRepository.findAllById(
+      products.map(product => ({
+        id: product.id,
+      })),
+    );
+
+    if (foundProducts.length !== products.length) {
+      throw new AppError('Invalid product id.');
+    }
+
+    const updatedQuantities: Product[] = [];
+
+    const updatedProducts = foundProducts.map(foundProduct => {
+      const orderProduct = products.find(
+        product => product.id === foundProduct.id,
+      );
+
+      if (orderProduct) {
+        if (orderProduct.quantity > foundProduct.quantity) {
+          throw new AppError(
+            `Product ${foundProduct.name} (${foundProduct.id}) only has
+            ${foundProduct.quantity} available in stock, but
+            ${orderProduct.quantity} is being requested in this order`,
+          );
+        }
+
+        updatedQuantities.push({
+          ...foundProduct,
+          quantity: foundProduct.quantity - orderProduct.quantity,
+        });
+
+        return {
+          ...foundProduct,
+          quantity: orderProduct.quantity,
+        };
+      }
+
+      return foundProduct;
     });
+
+    const order = await this.ordersRepository.create({
+      customer,
+      products: updatedProducts.map(updatedProduct => ({
+        product_id: updatedProduct.id,
+        price: updatedProduct.price,
+        quantity: updatedProduct.quantity,
+      })),
+    });
+
+    await this.productsRepository.updateQuantity(updatedQuantities);
 
     return order;
   }
